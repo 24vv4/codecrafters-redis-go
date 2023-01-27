@@ -18,7 +18,14 @@ func main() {
 		os.Exit(1)
 	}
 
-    str := "+PONG\r\n"
-    data := []byte(str)
-    conn.Write(data);
+    defer conn.Close()
+
+    buf := make([]byte, 1024)
+    for {
+        if _, err := conn.Read(buf); err != nil {
+            fmt.Println("error reading from client: ", err.Error())
+            os.Exit(1);
+        }
+        conn.Write([]byte("+PONG\r\n"))
+    }
 }
