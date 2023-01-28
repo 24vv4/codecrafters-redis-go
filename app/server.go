@@ -2,9 +2,9 @@ package main
 
 import (
 	"fmt"
+    "io"
 	"net"
 	"os"
-    "sync"
 )
 
 func main() {
@@ -13,28 +13,28 @@ func main() {
 	    fmt.Println("Failed to bind to port 6379")
 	    os.Exit(1)
 	}
-    wg := &sync.WaitGroup{}
-    for i := 0; i < 10; i++ {
-        wg.Add(1)
-        go func() {
-            conn, err := l.Accept()
-            if err != nil {
-                fmt.Println("Error accepting connection: ", err.Error())
+    for {
+        conn, err := l.Accept()
+        if err != nil {
+            fmt.Println("Error accepting connection: ", err.Error())
+            os.Exit(1)
+        }
+        go handleConnection(conn)
+    }
+}
+
+func handleConnection(conn net.Conn) {
+    defer conn.Close()
+    for {
+        buf := make([]byte, 1024)
+        if _, err := conn.Read(buf); err != nil {
+            if err == io.EOF {
+                break
+            } else {
+                fmt.Println("error reading from client: ", err.Error())
                 os.Exit(1)
             }
-
-            defer conn.Close()
-
-            for {
-                buf := make([]byte, 1024)
-                if _, err := conn.Read(buf); err != nil {
-                    fmt.Println("error reading from client: ", err.Error())
-                    break;
-                }
-                conn.Write([]byte("+PONG\r\n"))
-            }
-            wg.Done()
-        }()
+        }
+        conn.Write([]byte("+PONG\r\n"))
     }
-    wg.Wait()
 }
