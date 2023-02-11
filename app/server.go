@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -14,22 +16,24 @@ func main() {
 		fmt.Println("Failed to bind to port 6379")
 		os.Exit(1)
 	}
+	m := make(map[string]string)
 	for {
 		conn, err := l.Accept()
 		if err != nil {
 			fmt.Println("Error accepting connection: ", err.Error())
 			os.Exit(1)
 		}
-		go handleConnection(conn)
+		go handleConnection(conn, m)
 	}
 }
 
-func handleConnection(conn net.Conn) {
+func handleConnection(conn net.Conn, m map[string]string) {
 	defer conn.Close()
 	for {
-		buf := make([]byte, 256)
-		if _, err := conn.Read(buf); err != nil {
-			if err == io.EOF {
+		rd := bufio.NewReader(conn)
+		buf := make([]byte, 1024)
+		if _, err := rd.Read(buf); err != nil {
+			if errors.Is(err, io.EOF) {
 				break
 			} else {
 				fmt.Println("error reading from client: ", err.Error())
@@ -37,7 +41,7 @@ func handleConnection(conn net.Conn) {
 			}
 		}
 		tokens := tokenizer(buf)
-		res := execCommand(tokens)
+		res := execCommand(tokens, m)
 		conn.Write(res)
 	}
 }
@@ -54,14 +58,15 @@ func tokenizer(command []byte) []string {
 		// ex. *10\r\n...
 		next_cr := findCR(command)
 		count, _ := strconv.Atoi(string(command[1:next_cr]))
-		token_len := 0
 		start := next_cr + 2
 		for i := 0; i < count; i++ {
 			tokens := tokenizer(command[start:])
+			token_len := 0
 			for _, token := range tokens {
 				res = append(res, token)
 				token_len += len(token)
 			}
+			// fix me: this logic supports only Bulk String
 			start += 5 // $ + \r\n + \r\n
 			start += token_len
 			start += len(strconv.Itoa(token_len))
@@ -76,13 +81,18 @@ func tokenizer(command []byte) []string {
 	return res
 }
 
-func execCommand(tokens []string) []byte {
+func execCommand(tokens []string, memory map[string]string) []byte {
 	var res string
 	switch tokens[0] {
 	case "ping":
 		res = "+PONG\r\n"
 	case "echo":
 		res = "$" + strconv.Itoa(len(tokens[1])) + "\r\n" + tokens[1] + "\r\n"
+	case "set":
+		memory[tokens[1]] = tokens[2]
+		res = "+OK\r\n"
+	case "get":
+		res = "+" + tokens[1] + "\r\n"
 	}
 	return []byte(res)
 }
