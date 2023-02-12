@@ -16,7 +16,8 @@ func main() {
 		fmt.Println("Failed to bind to port 6379")
 		os.Exit(1)
 	}
-	m := make(map[string]string)
+    //TODO: thread safe
+    m := NewMemory()
 	for {
 		conn, err := l.Accept()
 		if err != nil {
@@ -27,7 +28,7 @@ func main() {
 	}
 }
 
-func handleConnection(conn net.Conn, m map[string]string) {
+func handleConnection(conn net.Conn, m *Memory) {
 	defer conn.Close()
 	for {
 		rd := bufio.NewReader(conn)
@@ -66,7 +67,7 @@ func tokenizer(command []byte) []string {
 				res = append(res, token)
 				token_len += len(token)
 			}
-			// fix me: this logic supports only Bulk String
+			// TODO: this logic supports only Bulk String
 			start += 5 // $ + \r\n + \r\n
 			start += token_len
 			start += len(strconv.Itoa(token_len))
@@ -81,7 +82,7 @@ func tokenizer(command []byte) []string {
 	return res
 }
 
-func execCommand(tokens []string, memory map[string]string) []byte {
+func execCommand(tokens []string, memory *Memory) []byte {
 	var res string
 	switch tokens[0] {
 	case "ping":
@@ -89,10 +90,21 @@ func execCommand(tokens []string, memory map[string]string) []byte {
 	case "echo":
 		res = "$" + strconv.Itoa(len(tokens[1])) + "\r\n" + tokens[1] + "\r\n"
 	case "set":
-		memory[tokens[1]] = tokens[2]
+        if(len(tokens) > 3) {
+            // PX
+            ms, _ := strconv.ParseInt(tokens[4], 10, 64)
+            memory.SetPX(tokens[1], tokens[2], ms)
+        } else {
+		    memory.Set(tokens[1], tokens[2])
+        }
 		res = "+OK\r\n"
 	case "get":
-		res = "+" + tokens[1] + "\r\n"
+        s, ok := memory.Get(tokens[1])
+		if(ok) {
+            res = "+" + s + "\r\n"
+        } else {
+            res = "$-1\r\n"
+        }
 	}
 	return []byte(res)
 }
