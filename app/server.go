@@ -8,6 +8,8 @@ import (
 	"net"
 	"os"
 	"strconv"
+    "math"
+    "time"
 )
 
 func main() {
@@ -116,4 +118,39 @@ func findCR(command []byte) int {
 		}
 	}
 	return -1
+}
+
+// can't exec `codecrafters test` for some *.go files
+// I have no choice but to put together in main.go
+type record struct {
+    value string
+    timestamp int64
+}
+
+type Memory struct {
+    data map[string]record
+}
+
+func NewMemory() *Memory {
+    return &Memory {
+        data: make(map[string]record),
+    }
+}
+
+func (kv *Memory) Set(key, value string) {
+    kv.data[key] = record{value: value, timestamp: math.MaxInt64}
+}
+
+func (kv *Memory) SetPX(key, value string, ms int64) {
+    kv.data[key] = record{value: value, timestamp: time.Now().UnixNano() / int64(time.Millisecond) + ms}
+
+}
+
+func (kv *Memory) Get(key string) (string, bool) {
+    rec := kv.data[key]
+    if(rec.timestamp > time.Now().UnixNano() / int64(time.Millisecond)) {
+        return kv.data[key].value, true
+    } else {
+        return "", false
+    }
 }
